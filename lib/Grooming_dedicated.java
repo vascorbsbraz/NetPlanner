@@ -64,9 +64,9 @@ import com.net2plan.utils.InputParameter;
 
 /**
  * @author Vasco Braz, Adolfo Oliveira
- * @version 2.0, May 2016
+ * @version 2.0, May 2015
  */
-public class Grooming_vb implements IAlgorithm
+public class Grooming_dedicated implements IAlgorithm
 {
 	
 	
@@ -95,7 +95,7 @@ public class Grooming_vb implements IAlgorithm
     		if (N == 0 || E == 0 || D == 0) throw new Net2PlanException("This algorithm requires a topology and a demand set");
 
     		String shortestPathType = algorithmParameters.get("shortestPathType");
-    		
+    		String numberOfRoutes = algorithmParameters.get("numberofroutes");
     		
     		if (!shortestPathType.equalsIgnoreCase("hops") && !shortestPathType.equalsIgnoreCase("km")) 
     		{
@@ -111,7 +111,7 @@ public class Grooming_vb implements IAlgorithm
     	    		
 
     		ArrayList<Long> linkIds = netPlan.getLinkIds(lowerLayer);
-    		final DoubleMatrix1D linkCostVector = shortestPathType.equalsIgnoreCase("hops")? DoubleFactory1D.dense.make (E , 1.0) : netPlan.getVectorLinkLengthInKm();
+    		final DoubleMatrix1D linkCostVector = shortestPathType.equalsIgnoreCase("km")? DoubleFactory1D.dense.make (E , 1.0) : netPlan.getVectorLinkLengthInKm();
     		ArrayList<Long> demandIds = netPlan.getDemandIds(lowerLayer);
     		long wavelengthCapacity = Long.parseLong(algorithmParameters.get("wavelengthCapacity"));
     		Route save=null;
@@ -120,7 +120,7 @@ public class Grooming_vb implements IAlgorithm
     		if(type != "Logical Topology Opaque" && type != "Logical Topology Transparent" && type != "Logical Topology Translucent")
     		throw new Net2PlanException ("Logical Topology Algorithm Required");	
     		
-    		netPlan.addRoutesFromCandidatePathList(linkCostVector.toArray(),"K", "1"); // one route per demand, so P equals D
+    		netPlan.addRoutesFromCandidatePathList(linkCostVector.toArray(),"K", numberOfRoutes); 
     		System.out.println(netPlan.getNumberOfRoutes());
     		
     		for(long links:linkIds)
@@ -149,11 +149,52 @@ public class Grooming_vb implements IAlgorithm
     								for(Route c: droutes)
     									
     								{
+    								counter++;	
+    								boolean jump=false;
+    								
+    									if(odd)
+    									{
     										c.setCarriedTraffic(d.getOfferedTraffic(), d.getOfferedTraffic());
+    										save=c;
+    										odd=false;
+    										System.out.println("Roots");
+    									}else
+    									{
+    										List<Link>  workingpath = save.getSeqLinksRealPath();
+    										System.out.println("Protection");
+    										
+    										for(Link t:workingpath)
+    										{
+    											if(c.getSeqLinksRealPath().contains(t))	
+    											{
+    												jump=true;
+    												break;
+    											}
+    										}
 
+    										if(jump==false)
+    											{
+    												ProtectionSegment segment=netPlan.addProtectionSegment(c.getSeqLinksRealPath() , d.getOfferedTraffic() , null);
+    												save.addProtectionSegment(segment);
+    												odd=true;
+    												break;
+    											}
+
+    										if(jump==true && counter == droutes.size())
+    											{
+    												ProtectionSegment segment=netPlan.addProtectionSegment(c.getSeqLinksRealPath() , d.getOfferedTraffic() , null);
+    												save.addProtectionSegment(segment);
+    												odd=true;
+    												throw new Net2PlanException ("Number of routes is not enough");
+    											}
+
+    									}
+    							
     								}
 
-
+    									
+    								//primaryPaths.add(primaryPath);
+    								//if (c.getNumberOfHops() == 0) throw new Net2PlanException ("The network is not connected");
     								
     							}
     							netPlan.removeAllRoutesUnused(1);
@@ -162,7 +203,7 @@ public class Grooming_vb implements IAlgorithm
     							for(long e:linkIds)
     							{
     								p=netPlan.getLinkFromId(e);
-    								double sumTraffic = p.getCarriedTrafficNotIncludingProtectionSegments();
+    								double sumTraffic = p.getCarriedTrafficNotIncludingProtectionSegments()+p.getReservedCapacityForProtection();
     								int nw = (int) Math.ceil(sumTraffic/wavelengthCapacity);
     								String numberWavelengths = String.valueOf(nw);
     								p.setCapacity(nw*wavelengthCapacity);
@@ -390,9 +431,9 @@ public class Grooming_vb implements IAlgorithm
     public List<Triple<String, String, String>> getParameters()
 	{
 		List<Triple<String, String, String>> parameters = new ArrayList<Triple<String, String, String>>();
-		parameters.add(Triple.of("shortestPathType", "hops", "Each demand is routed according to the shortest path according to this type. Can be 'km' or 'hops'"));
+		parameters.add(Triple.of("shortestPathType", "km", "Each demand is routed according to the shortest path according to this type. Can be 'km' or 'hops'"));
 		parameters.add(Triple.of("wavelengthCapacity", "80", "ODU0 Capacity per Wavelength"));
-		
+		parameters.add(Triple.of("numberofroutes", "10", "total number of routes per demand"));
 		return parameters;
 	}
 
